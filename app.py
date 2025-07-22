@@ -1,35 +1,26 @@
 import os
 import json
 import datetime
-import logging
-
 from flask import Flask, request
-from telegram import Bot, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+    Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
 
-# Logging setup
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Telegram Bot Token (make sure it's stored in environment for security)
+# Get bot token from environment variable
 TOKEN = os.environ.get("BOT_TOKEN")
-bot = Bot(token=TOKEN)
 
-# Initialize Flask App
-app = Flask(__name__)
-
-# Simple In-Memory Database (for demonstration; use Replit DB or Redis for production)
+# Simple in-memory database (for demo; use real DB for production)
 user_data = {}
 
-# Menu keyboard
+# Telegram bot app
+app = Flask(__name__)
+application = Application.builder().token(TOKEN).build()
+
+# Menu
 main_menu = [["📚 Courses", "💡 Trial"], ["📈 Progress", "❌ Exit"]]
 
-# ===== Telegram Bot Logic =====
-
+# Telegram bot commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if user_id not in user_data:
@@ -52,7 +43,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_data.get(user_id, {}).get("subscribed", False):
             await update.message.reply_text("✅ Access granted. Choose a course:")
         else:
-            await update.message.reply_text("🔒 Please subscribe to access courses.")
+            await update.message.reply_text(
+                "🔒 Please subscribe here to access courses:\n\n"
+                "👉 https://linusteven.gumroad.com/l/ritlag"
+            )
     elif text == "💡 Trial":
         if not user_data.get(user_id, {}).get("trial_used", False):
             user_data[user_id]["trial_used"] = True
@@ -68,23 +62,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❓ Invalid option. Please choose from the menu.")
 
-# ===== Flask Webhook Endpoint =====
-
-@app.route('/')
-def home():
-    return "SmartSkill Bot is running!"
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
-    return 'ok'
-
-# ===== Bot Runner =====
-
-application = ApplicationBuilder().token(TOKEN).build()
+# Add handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+# Flask root
+@app.route('/')
+def index():
+    return "SmartSkill Bot is Live!"
+
+# Telegram webhook
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
+    return "ok"
+
+# Entry point for local test (not used in Render)
 if __name__ == '__main__':
-    application.run_polling()
+    import asyncio
+    async def run():
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
+    asyncio.run(run())
