@@ -1,4 +1,4 @@
-gservices:
+services:
   - type: web
     name: smartskill-bot
     env: python
@@ -6,4 +6,4 @@ gservices:
     startCommand: gunicorn app:app
     envVars:
       - key: BOT_TOKEN
-        value: your-telegram-bot-token-here
+        value: your-real-telegram-token-here
