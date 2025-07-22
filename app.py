@@ -1,102 +1,77 @@
-import os from flask import Flask, request from telegram import Bot, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove from telegram.ext import CommandHandler, MessageHandler, filters, CallbackContext, ApplicationBuilder import datetime import logging import json
+import os import json import datetime import logging
 
---- Configurations ---
-
-TOKEN = os.getenv("BOT_TOKEN") or "YOUR_TELEGRAM_BOT_TOKEN" SUBSCRIPTION_LINK = "https://linusteven.gumroad.com/l/ritlag" TRIAL_LIMIT = 3 TRIAL_RESET_DAYS = 7
-
-In-memory database (for simplicity)
-
-users = {}
+from flask import Flask, request from telegram import ( Bot, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, ) from telegram.ext import ( ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters, )
 
 app = Flask(name)
 
---- Logger ---
+Bot Token and Payment Link
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+TOKEN = os.getenv("BOT_TOKEN") PAYMENT_LINK = "https://linusteven.gumroad.com/l/ritlag" TRIAL_LIMIT = 3 TRIAL_RESET_DAYS = 7
 
---- Bot UI Menus ---
+In-memory DB simulation (you should use a real DB)
 
-main_menu = [ ["📚 Courses", "🧠 Learn Anything"], ["🎓 Student Help", "👤 My Profile"] ]
+users_db = {} learning_paths = { "Cybersecurity": [ "Ethical Hacking", "Computer Forensics", "Cybersecurity Engineer", "Security Architect" ], "Software Engineering": [ "Frontend Developer", "Backend Developer", "Full Stack", "DevOps Engineer" ], "Business": [ "Digital Marketing", "Entrepreneurship", "Business Analytics", "E-commerce" ] }
 
-course_menu = [ ["Cybersecurity", "Software Engineering"], ["Business"], ["⬅️ Back to Menu"] ]
+@app.route("/") def index(): return "SmartSkill Bot is Live!"
 
-cyber_roles = [ ["🔓 Ethical Hacking", "🧪 Penetration Testing"], ["🔬 Forensics", "🛡️ Security Architect"], ["⬅️ Back"] ]
+@app.route(f"/{TOKEN}", methods=["POST"]) def telegram_webhook(): update = Update.de_json(request.get_json(force=True), bot) application.update_queue.put(update) return "ok"
 
-software_roles = [ ["💻 Frontend Dev", "🖥 Backend Dev"], ["📱 Mobile Dev", "🧠 AI Dev"], ["⬅️ Back"] ]
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): user_id = str(update.message.chat_id) users_db.setdefault(user_id, {"trials": 0, "last_trial": None, "subscribed": False})
 
-business_roles = [ ["📈 Marketing", "💼 Management"], ["📊 Analytics", "💡 Startup Guide"], ["⬅️ Back"] ]
+keyboard = [["Cybersecurity", "Software Engineering"], ["Business"], ["Help"]]
+reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+await update.message.reply_text(
+    "👋 Welcome to SmartSkill Bot!\n\nChoose a course to get started:",
+    reply_markup=reply_markup
+)
 
---- Sample Topics ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE): user_id = str(update.message.chat_id) message = update.message.text
 
-topics = { "🔓 Ethical Hacking": ["What is Ethical Hacking?", "Phases of PenTesting", "Common Tools"], "💻 Frontend Dev": ["HTML & CSS", "JavaScript", "React Basics"], "📈 Marketing": ["Social Media", "Email Campaigns", "SEO"] }
+user_data = users_db.get(user_id, {})
 
---- Helper Functions ---
+if message in learning_paths:
+    roles = learning_paths[message]
+    buttons = [[role] for role in roles]
+    buttons.append(["Back to Menu"])
+    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    await update.message.reply_text(f"Select your preferred role in {message}:", reply_markup=reply_markup)
+    return
 
-def is_subscribed(user_id): user = users.get(user_id, {}) return user.get("subscribed", False)
+elif message in sum(learning_paths.values(), []):
+    # Trial logic
+    trials = user_data.get("trials", 0)
+    last_trial = user_data.get("last_trial")
+    subscribed = user_data.get("subscribed", False)
 
-def check_trial(user_id): user = users.setdefault(user_id, {"trial": 0, "last_reset": str(datetime.date.today()), "subscribed": False}) last_reset = datetime.date.fromisoformat(user["last_reset"]) if (datetime.date.today() - last_reset).days >= TRIAL_RESET_DAYS: user["trial"] = 0 user["last_reset"] = str(datetime.date.today()) return user["trial"] < TRIAL_LIMIT
-
---- Command Handlers ---
-
-async def start(update: Update, context: CallbackContext): user_id = update.effective_user.id users.setdefault(user_id, {"trial": 0, "last_reset": str(datetime.date.today()), "subscribed": False}) await update.message.reply_text( f"👋 Welcome to SmartSkill Bot!\n\nAccess expert-led courses in Cybersecurity, Software Engineering, and Business.\n\n💡 Try any 3 topics for FREE!\n🔒 To unlock full access, subscribe here:\n{SUBSCRIPTION_LINK}", reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True) )
-
-async def handle_message(update: Update, context: CallbackContext): user_id = update.effective_user.id text = update.message.text
-
-if text == "📚 Courses":
-    await update.message.reply_text("Choose a course:", reply_markup=ReplyKeyboardMarkup(course_menu, resize_keyboard=True))
-
-elif text == "Cybersecurity":
-    await update.message.reply_text("Select a Cybersecurity path:", reply_markup=ReplyKeyboardMarkup(cyber_roles, resize_keyboard=True))
-
-elif text == "Software Engineering":
-    await update.message.reply_text("Choose a Software Engineering role:", reply_markup=ReplyKeyboardMarkup(software_roles, resize_keyboard=True))
-
-elif text == "Business":
-    await update.message.reply_text("Pick a Business path:", reply_markup=ReplyKeyboardMarkup(business_roles, resize_keyboard=True))
-
-elif text == "⬅️ Back to Menu":
-    await update.message.reply_text("Returning to main menu:", reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True))
-
-elif text == "⬅️ Back":
-    await update.message.reply_text("Choose a course:", reply_markup=ReplyKeyboardMarkup(course_menu, resize_keyboard=True))
-
-elif text in topics:
-    user = users[user_id]
-    if is_subscribed(user_id) or check_trial(user_id):
-        if not is_subscribed(user_id):
-            users[user_id]["trial"] += 1
-        await update.message.reply_text(f"📘 Learning path for {text}:")
-        for t in topics[text]:
-            await update.message.reply_text(f"• {t}")
-        if not is_subscribed(user_id):
-            await update.message.reply_text(f"🔒 Trial used: {users[user_id]['trial']} of {TRIAL_LIMIT}")
-            if users[user_id]["trial"] >= TRIAL_LIMIT:
-                await update.message.reply_text(f"⚠️ Your trial has ended. Subscribe here to unlock all courses:\n{SUBSCRIPTION_LINK}")
+    if subscribed:
+        await update.message.reply_text(f"📘 Starting course on {message}...\n\n[Lesson 1] ...")
     else:
-        await update.message.reply_text(f"🚫 Your free trial is over. Subscribe to continue:\n{SUBSCRIPTION_LINK}")
+        if trials < TRIAL_LIMIT:
+            users_db[user_id]["trials"] += 1
+            users_db[user_id]["last_trial"] = datetime.datetime.now().isoformat()
+            await update.message.reply_text(f"🎓 Trial {trials+1}/{TRIAL_LIMIT}\n\n[Lesson 1] {message} content here...")
+        else:
+            await update.message.reply_text(f"🚫 Trial limit reached. Please subscribe to continue:\n{PAYMENT_LINK}")
 
-elif text == "🎓 Student Help":
-    await update.message.reply_text("Send me your assignment or project topic. I’ll help you understand, write, and solve it.")
+elif message == "Help":
+    await update.message.reply_text("📚 Use the buttons to navigate and start learning.\nYou have 3 free trials per week.")
 
-elif text == "🧠 Learn Anything":
-    await update.message.reply_text("Type anything you want to learn about. For example: 'Explain Quantum Computing' or 'Teach me Python'")
-
-elif text == "👤 My Profile":
-    user = users.get(user_id, {})
-    subscribed = "✅ Subscribed" if user.get("subscribed") else "❌ Not Subscribed"
-    await update.message.reply_text(f"📄 Profile Info:\n• Subscription: {subscribed}\n• Trial used: {user.get('trial', 0)} / {TRIAL_LIMIT}")
-
+elif message == "Back to Menu":
+    await start(update, context)
 else:
-    await update.message.reply_text("Processing your request...")
-    await update.message.reply_text(f"🤖 Learning: {text}\n(This is a demo response powered by ChatGPT.)")
+    await update.message.reply_text("❓ Please select a valid option from the menu.")
 
---- Webhook for Gumroad ---
+@app.route("/gumroad-webhook", methods=["POST"]) def gumroad_webhook(): data = request.form if data.get("purchase" or {}).get("email"): email = data["purchase"]["email"] # Optional: You may map email to Telegram ID if collected for uid in users_db: if users_db[uid].get("email") == email: users_db[uid]["subscribed"] = True return "Webhook received"
 
-@app.route("/gumroad", methods=["POST"]) def gumroad_webhook(): data = request.form email = data.get("email") if not email: return "Missing email", 400 for uid, udata in users.items(): if udata.get("email") == email: udata["subscribed"] = True return "OK", 200
+Logging
 
---- Telegram Bot Setup ---
+logging.basicConfig( format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO )
 
-async def main(): app_builder = ApplicationBuilder().token(TOKEN).build() app_builder.add_handler(CommandHandler("start", start)) app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) await app_builder.initialize() await app_builder.start() print("🤖 SmartSkill Bot running...") await app_builder.updater.start_polling() await app_builder.updater.idle()
+Bot Setup
 
-if name == 'main': import asyncio from threading import Thread Thread(target=lambda: app.run(host="0.0.0.0", port=8080)).start() asyncio.run(main())
+bot = Bot(token=TOKEN) application = ApplicationBuilder().token(TOKEN).build() application.add_handler(CommandHandler("start", start)) application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+Start bot in background (for Render)
+
+if name == "main": import threading threading.Thread(target=application.run_polling).start() app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
 
