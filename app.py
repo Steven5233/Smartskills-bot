@@ -1,88 +1,86 @@
-import os
-import json
-import datetime
-from flask import Flask, request
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, ContextTypes, filters
+import os import datetime import logging import json from flask import Flask, request from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters import requests
+
+Set your bot token and Gumroad product details
+
+TOKEN = os.getenv("TOKEN") or "your_telegram_bot_token" GUMROAD_PRODUCT_ID = "ritlag" GUMROAD_API_URL = "https://api.gumroad.com/v2/sales" GUMROAD_ACCESS_TOKEN = os.getenv("GUMROAD_ACCESS_TOKEN") or "your_gumroad_api_token" GUMROAD_PAYMENT_LINK = "https://linusteven.gumroad.com/l/ritlag"
+
+Bot owner info
+
+BOT_OWNER = "Adoyi Steven" POWERED_BY = "ChatGPT"
+
+Flask app for Render deployment
+
+app = Flask(name)
+
+In-memory database (replace with real DB for production)
+
+USERS = {} COURSES = { "Cybersecurity": ["Introduction to Cybersecurity", "Network Security Basics", "Ethical Hacking Tools"], "Software Engineering": ["Software Development Life Cycle", "Agile and Scrum", "Design Patterns"], "Business": ["Starting a Business", "Marketing 101", "Financial Planning"] }
+
+-------------- GUMROAD CHECK --------------
+
+def check_gumroad_email(email): params = { "access_token": GUMROAD_ACCESS_TOKEN, "product_permalink": GUMROAD_PRODUCT_ID } response = requests.get(GUMROAD_API_URL, params=params) if response.status_code == 200: sales = response.json().get("sales", []) for sale in sales: if sale.get("email") == email: return True return False
+
+-------------- HANDLERS -------------------
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): user_id = str(update.effective_user.id) USERS.setdefault(user_id, {"trial": True, "email": None})
+
+keyboard = [["Courses"], ["Student Assistant"], ["Learn Anything"], ["Subscription Info"]]
+reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+await update.message.reply_text(
+    f"👋 Welcome to SmartSkill Bot!\n
+    Learn and grow with professional courses.\n\n
+    🧠 Powered by {POWERED_BY}\n👤 Owner: {BOT_OWNER}",
+    reply_markup=reply_markup
 )
 
-# Get bot token from environment variable
-TOKEN = os.environ.get("BOT_TOKEN")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE): text = update.message.text user_id = str(update.effective_user.id) user_data = USERS.get(user_id, {})
 
-# Simple in-memory database (for demo; use real DB for production)
-user_data = {}
+if text == "Courses":
+    if not user_data.get("trial") and not user_data.get("email_verified"):
+        await update.message.reply_text("❌ Please subscribe first: " + GUMROAD_PAYMENT_LINK)
+        return
 
-# Telegram bot app
-app = Flask(__name__)
-application = Application.builder().token(TOKEN).build()
+    courses = "\n".join([f"📘 {c}" for c in COURSES.keys()])
+    await update.message.reply_text(f"📚 Available Courses:\n{courses}\n\nType course name to continue.")
 
-# Menu
-main_menu = [["📚 Courses", "💡 Trial"], ["📈 Progress", "❌ Exit"]]
+elif text in COURSES:
+    topics = COURSES[text]
+    await update.message.reply_text(f"📘 *{text} Topics:*\n- " + "\n- ".join(topics), parse_mode="Markdown")
 
-# Telegram bot commands
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    if user_id not in user_data:
-        user_data[user_id] = {
-            "trial_used": False,
-            "subscribed": False,
-            "joined": str(datetime.datetime.now())
-        }
+elif text == "Student Assistant":
+    await update.message.reply_text("📚 Send me your course, assignment or project and I'll help you solve it.")
 
-    await update.message.reply_text(
-        "👋 Welcome to SmartSkill Bot!\n\nChoose an option:",
-        reply_markup=ReplyKeyboardMarkup(main_menu, resize_keyboard=True)
-    )
+elif text == "Learn Anything":
+    await update.message.reply_text("🤖 What do you want to learn today? Just type it!")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    text = update.message.text
-
-    if text == "📚 Courses":
-        if user_data.get(user_id, {}).get("subscribed", False):
-            await update.message.reply_text("✅ Access granted. Choose a course:")
-        else:
-            await update.message.reply_text(
-                "🔒 Please subscribe here to access courses:\n\n"
-                "👉 https://linusteven.gumroad.com/l/ritlag"
-            )
-    elif text == "💡 Trial":
-        if not user_data.get(user_id, {}).get("trial_used", False):
-            user_data[user_id]["trial_used"] = True
-            await update.message.reply_text("🎉 Trial activated! Enjoy your free session.")
-        else:
-            await update.message.reply_text("⚠️ Trial already used.")
-    elif text == "📈 Progress":
-        joined = user_data.get(user_id, {}).get("joined", "Unknown")
-        await update.message.reply_text(f"📅 You joined on {joined}")
-    elif text == "❌ Exit":
-        await update.message.reply_text("👋 Bye! Send /start to begin again.",
-                                        reply_markup=ReplyKeyboardRemove())
+elif text == "Subscription Info":
+    if user_data.get("email_verified"):
+        await update.message.reply_text("✅ You are subscribed!")
     else:
-        await update.message.reply_text("❓ Invalid option. Please choose from the menu.")
+        await update.message.reply_text(f"💡 To unlock all features, subscribe here: {GUMROAD_PAYMENT_LINK}\n\nAfter payment, send /verify <your_email>")
 
-# Add handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+else:
+    await update.message.reply_text("✅ Received! Our AI is working on your request.")
 
-# Flask root
-@app.route('/')
-def index():
-    return "SmartSkill Bot is Live!"
+async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE): user_id = str(update.effective_user.id) args = context.args if not args: await update.message.reply_text("❌ Usage: /verify your_email@example.com") return
 
-# Telegram webhook
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
-async def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
-    return "ok"
+email = args[0]
+if check_gumroad_email(email):
+    USERS[user_id]["email"] = email
+    USERS[user_id]["email_verified"] = True
+    USERS[user_id]["trial"] = False
+    await update.message.reply_text("✅ Subscription verified! You now have full access.")
+else:
+    await update.message.reply_text("❌ Email not found in Gumroad sales. Please check or contact support.")
 
-# Entry point for local test (not used in Render)
-if __name__ == '__main__':
-    import asyncio
-    async def run():
-        await application.initialize()
-        await application.start()
-        await application.updater.start_polling()
-    asyncio.run(run())
+------------------ WEBHOOK --------------------
+
+@app.route(f"/webhook/{TOKEN}", methods=["POST"]) def webhook(): update = Update.de_json(request.get_json(force=True), application.bot) application.update_queue.put_nowait(update) return "OK"
+
+----------------- SETUP BOT --------------------
+
+application = ApplicationBuilder().token(TOKEN).build() application.add_handler(CommandHandler("start", start)) application.add_handler(CommandHandler("verify", verify)) application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+if name == "main": app.run(host="0.0.0.0", port=5000)
+
