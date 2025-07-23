@@ -1,4 +1,18 @@
-import os import datetime import logging import json from flask import Flask, request from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters import requests
+import os
+import datetime
+import logging
+import json
+import requests
+
+from flask import Flask, request
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 Set your bot token and Gumroad product details
 
