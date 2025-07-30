@@ -6,6 +6,5 @@ services:
     startCommand: gunicorn app:app
     envVars:
       - key: BOT_TOKEN
-        value: 
-          8205667394:AAE6WW3RdfInZXdXMN9fwJ1G1PhiCXzOHCE
+        value: your real bot token from bot father 
         
