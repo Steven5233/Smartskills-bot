@@ -12,7 +12,9 @@ from telegram.ext import (
 )
 
 # ------------------ CONFIG ------------------
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv(
+          8205667394:AAE6WW3RdfInZXdXMN9fwJ1G1PhiCXzOHCE
+         )
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 GUMROAD_PRODUCT_ID = "ritlag"
 GUMROAD_API_URL = "https://api.gumroad.com/v2/sales"
