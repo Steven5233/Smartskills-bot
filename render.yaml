@@ -6,4 +6,6 @@ services:
     startCommand: gunicorn app:app
     envVars:
       - key: BOT_TOKEN
-        value: your-real-telegram-token-here
+        value: 
+          8205667394:AAE6WW3RdfInZXdXMN9fwJ1G1PhiCXzOHCE
+        
